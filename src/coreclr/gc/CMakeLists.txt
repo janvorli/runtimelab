@@ -21,6 +21,7 @@ set(GC_SOURCES
   gcbridge.cpp
   handletablecache.cpp
   satori/SatoriGC.cpp
+  satori/SatoriHandlePartitioner.cpp
   satori/SatoriHeap.cpp
   satori/SatoriPage.cpp
   satori/SatoriRegion.cpp
@@ -89,6 +90,7 @@ if (CLR_CMAKE_TARGET_WIN32)
     objecthandle.h
     softwarewritewatch.h
     satori/SatoriGC.h
+    satori/SatoriHandlePartitioner.h
     satori/SatoriHeap.h
     satori/SatoriPage.h
     satori/SatoriRegion.h
