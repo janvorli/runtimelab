@@ -956,6 +956,7 @@ extern "C" INT64 QCALLTYPE GCInterface_GetTotalAllocatedBytesPrecise(QCallExcept
     END_QCALL;
 
     return allocated;
+#endif
 }
 
 
