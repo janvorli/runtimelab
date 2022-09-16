@@ -1089,7 +1089,11 @@ void GCToOSInterface::GetMemoryStatus(uint64_t restricted_limit, uint32_t* memor
 int64_t GCToOSInterface::QueryPerformanceCounter()
 {
     LARGE_INTEGER ts;
-    ::QueryPerformanceCounter(&ts);
+    if (!::QueryPerformanceCounter(&ts))
+    {
+        assert(false && "Failed to query performance counter");
+    }
+
     return ts.QuadPart;
 }
 
@@ -1099,7 +1103,11 @@ int64_t GCToOSInterface::QueryPerformanceCounter()
 int64_t GCToOSInterface::QueryPerformanceFrequency()
 {
     LARGE_INTEGER ts;
-    ::QueryPerformanceFrequency(&ts);
+    if (!::QueryPerformanceFrequency(&ts))
+    {
+        assert(false && "Failed to query performance counter");
+    }
+
     return ts.QuadPart;
 }
 
