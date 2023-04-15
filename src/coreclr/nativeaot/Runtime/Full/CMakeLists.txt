@@ -131,6 +131,7 @@ if (CLR_CMAKE_TARGET_ARCH_ARM64 OR CLR_CMAKE_TARGET_ARCH_AMD64)
 endif (CLR_CMAKE_TARGET_ARCH_ARM64 OR CLR_CMAKE_TARGET_ARCH_AMD64)
 
 target_compile_definitions(Runtime.ServerGC PRIVATE FEATURE_SVR_GC)
+target_compile_definitions(Runtime.WorkstationGC PRIVATE FEATURE_SVR_GC)
 
 if (CLR_CMAKE_TARGET_WIN32)
   set_target_properties(aotminipal PROPERTIES

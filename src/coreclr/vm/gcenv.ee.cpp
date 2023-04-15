@@ -1220,6 +1220,7 @@ void GCToEEInterface::StompWriteBarrier(WriteBarrierParameters* args)
 #endif // FEATURE_USE_SOFTWARE_WRITE_WATCH_FOR_GC_HEAP
         break;
 
+#if FEATURE_SATORI_GC
     case WriteBarrierOp::StartConcurrentMarkingSatori:
         g_sw_ww_table = (uint8_t*)1;
         g_sw_ww_enabled_for_gc_heap = true;
@@ -1238,6 +1239,7 @@ void GCToEEInterface::StompWriteBarrier(WriteBarrierParameters* args)
         g_sw_ww_enabled_for_gc_heap = false;
         stompWBCompleteActions |= ::SwitchToNonWriteWatchBarrier(true);
         return;
+#endif
 
     default:
         assert(!"unknown WriteBarrierOp enum");

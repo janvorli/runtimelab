@@ -506,6 +506,10 @@ void GCHeap::UpdateFrozenSegment(segment_handle seg, uint8_t* allocated, uint8_t
     heap->update_ro_segment (reinterpret_cast<heap_segment*>(seg), allocated, committed);
 }
 
+void GCHeap::BulkMoveWithWriteBarrier(void* dst, const void* src, size_t byteCount)
+{
+}
+
 bool GCHeap::RuntimeStructuresValid()
 {
     return GCScan::GetGcRuntimeStructuresValid();
