@@ -191,7 +191,34 @@ INVALIDGCVALUE  EQU 0xCCCCCCCD
         ;; Exit label
     MEND
 
-;; RhpCheckedAssignRef(Object** dst, Object* src)
+;; void JIT_ByRefWriteBarrier
+;; On entry:
+;;   x13 : the source address (points to object reference to write)
+;;   x14 : the destination address (object reference written here)
+;;
+;; On exit:
+;;   x13 : incremented by 8
+;;   x14 : incremented by 8
+;;   x15  : trashed
+;;   x12, x17  : trashed
+;;
+;;   NOTE: Keep in sync with RBM_CALLEE_TRASH_WRITEBARRIER_BYREF and RBM_CALLEE_GCTRASH_WRITEBARRIER_BYREF
+;;         if you add more trashed registers.
+;;
+;; WARNING: Code in EHHelpers.cpp makes assumptions about write barrier code, in particular:
+;; - Function "InWriteBarrierHelper" assumes an AV due to passed in null pointer will happen at RhpByRefAssignRefAVLocation1
+;; - Function "UnwindSimpleHelperToCaller" assumes no registers were pushed and LR contains the return address
+    LEAF_ENTRY RhpByRefAssignRefArm64
+
+    ALTERNATE_ENTRY RhpByRefAssignRefAVLocation1
+    ALTERNATE_ENTRY RhpByRefAssignRefAVLocation2
+        ldr     x15, [x13], 8
+        b       RhpCheckedAssignRefArm64
+
+    LEAF_END RhpByRefAssignRefArm64
+
+;; JIT_CheckedWriteBarrier(Object** dst, Object* src)
+;; JIT_CheckedWriteBarrier(Object** dst, Object* src)
 ;;
 ;; Write barrier for writes to objects that may reside
 ;; on the managed heap.
@@ -381,6 +408,7 @@ NoBarrierXchg
 ;;
     LEAF_ENTRY RhpByRefAssignRefArm64, _TEXT
 
+   RhpByRefAssignRefAVLocation1
         ldr     x15, [x13], 8
         b       RhpCheckedAssignRefArm64
 
