@@ -1,3 +1,4 @@
+# Debugger integration with the interpreter
 ## Debugger to interpreter calls
 ### Mono
 The interpreter exposes a subset of functions implemented in the interp.c as an interface that Mono runtime calls into. The functions listed below are called by the debugger related code. 
@@ -40,3 +41,6 @@ There are just two "events" that the interpreter notifies the debugger about:
 * Single stepping: when MINT_SDB_INTR_LOC IR opcode is executed, Debugger::SendStep will be called. That sends DB_IPCE_STEP_COMPLETE event and the debugger processes it by ICorDebugManagedCallback::StepComplete)
 * Breakpoint hit: when MINT_SDB_BREAKPOINT IR opcode is executed, Debugger::SendBreakpoint will be called (that sends DB_IPCE_BREAKPOINT and the debugger processes it by calling ICorDebugManagedCallback::Breakpoint)
 * System.Diagnostics.Debugger.Break(): when MINT_BREAK IR opcode is executed, Debugger::SendRawUserBreakpoint will be called (that sends DB_IPCE_USER_BREAKPOINT and the debugger processes it by calling ICorDebugManagedCallback::Break)
+
+## WASM debugger event loop
+The Mono debugger runs a debugger event loop that receives commands from the debugger in a separate thread. Since WASM is a single threaded environment, the debugger has to use a different mechanism. The Mono interpreter calls mono_component_debugger()->receive_and_process_command_from_debugger_agent() for each MINT_SDB_SEQ_POINT it interprets. 
