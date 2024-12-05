@@ -6,7 +6,7 @@ This documents lists all functions in the transform.c file in the Mono interpret
 
 There are various cases when a call to runtime helper is needed to perform some operation. This is likely different for Mono (may use a different set of helpers or may not need a helper). So handling such cases will likely need to be added to the transformation and execution phases. Precise details on where and how are beyond the scope of this document.
 
-#  MonoClass, MonoField, MonoMethod and MonoType member access helpers
+#  MonoClass, MonoField, MonoMethod and MonoType member access helpers (m_ macros map)
 The following functions are helpers used to access fields in MonoClass, MonoField, MonoMethod and MonoType. They are used all over the place, so they are described here instead of at the specific places they are used.
  * m_class_get_byval_arg - N.A. on CoreCLR
  * m_class_get_element_class -> getChildType
@@ -38,6 +38,177 @@ The following functions are helpers used to access fields in MonoClass, MonoFiel
 
 # Functions that have calls to Mono APIs
 For each Mono API or a Mono specific code sequence, it describes how to replace it using JIT2EEInterface methods. In cases when the whole function would be reimplemented in a slightly different way instead of just replacing Mono API calls by their JIT2EEInterface equivalents, a high level description of the function behavior with details on what JIT2EEInterface methods to use is provided.
+
+### has_intrinsic_attribute
+* replace with isIntrinsic call
+
+### has_doesnotreturn_attribute
+* Checks whether the method has "System.Diagnostics.CodeAnalysis", "DoesNotReturnAttribute"
+* ICorStaticInfo doesn't contain API to access custom attributes. Possible solutions:
+   - avoid calls to has_doesnotreturn_attribute, it is part of inlining process, use just canInline in these places
+   - add new method to the ICorStaticInfo, similar to isIntrinsic (that might involve extending the WellKnownAttributes enum)
+
+### get_type_from_stack
+* Gets mono type from interp's stack type. uses mono_defaults (src/mono/mono/metadata/class-internals.h) to return types from mono_defaults classes (mapped from stack type)
+* Update to return CoreCLR class handle
+* We might need to extend ICorStaticInfo API to get the default types or implement local helper.
+
+### mono_mint_type
+* Returns interp's mint type for type
+* m_class_is_enumtype -> isEnum
+* mono_class_enum_basetype_internal -> isEnum - underlyingType parameter
+* m_class_get_byval_arg - N.A. on CoreCLR
+
+### interp_create_var_explicit
+* m_class_is_simd_type - check the m_ macros map above
+* mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+
+### interp_create_dummy_var
+* m_class_get_byval_arg (mono_defaults.void_class) -> see get_type_from_stack
+* Update to use CoreCLR void class
+
+### interp_create_ref_handle_var
+* m_class_get_byval_arg (mono_defaults.int_class) -> see get_type_from_stack
+* Update to use CoreCLR int class
+
+### push_var
+* mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+
+### push_mono_type
+* mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+* m_type_is_byref -> asCorInfoType() == CORINFO_TYPE_BYREF
+
+### merge_stack_type_information
+* This uses mono class field in the state, that should be resolved with state containing CoreCLR class handles instead
+
+### handle_branch
+* mono_threads_are_safepoints_enabled -> N.A. on CoreCLR
+* Mono sets this flag by:
+        switch (p) {
+        case MONO_THREADS_SUSPEND_FULL_COOP:
+        case MONO_THREADS_SUSPEND_HYBRID:
+                return TRUE;
+        default:
+                return FALSE;
+        }
+* Always add safepoints (as if the mono_threads_are_safepoints_enabled always returned true)
+
+### two_arg_branch
+* m_class_get_name -> getClassNameFromMetadata
+
+### binary_arith_op
+* m_class_get_name -> getClassNameFromMetadata
+
+### shift_op
+* m_class_get_name -> getClassNameFromMetadata
+
+### get_arg_type_exact
+*  mono_method_signature_internal -> getMethodSig
+*  m_class_get_byval_arg - N.A. on CoreCLR
+
+### load_arg
+* mono_method_signature_internal -> getMethodSig
+  mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+* mono_method_signature_internal (td->method)->pinvoke && !mono_method_signature_internal (td->method)->marshalling_disabled -> (getMethodAttribs(...) & CORINFO_FLG_PINVOKE) && pInvokeMarshalingRequired(...)
+* Simplify code with 2 following calls to just use getClassSize
+* mono_class_native_size
+* mono_class_value_size
+
+### store_arg
+* Same changes as load_arg above
+
+### load_local (TransformData *td, int local)
+* mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+
+### mono_interp_jit_call_supported
+* Return false, we will not support JIT (at least not in first version)
+
+### jit_call2_supported
+* Remove or return false, we will not support JIT (at least not in first version)
+
+### interp_generate_mae_throw
+### interp_generate_void_throw
+### interp_generate_ipe_throw_with_msg
+* Calls method access error icall
+* mono_get_jit_icall_info
+* Reimplement as part of the error handling replacement
+
+### interp_generate_ipe_bad_fallthru
+* mono_disasm_code_one -> N.A. on CoreCLR?
+ - ILCode is available with getMethodInfo
+ - we can reuse code from JIT to disassemble IL
+* Reimplement as part of the error handling replacement
+
+### interp_create_var
+* mono_type_size -> getClassSize
+
+### interp_dump_ins_data
+* m_class_get_name -> getClassNameFromMetadata
+* m_class_get_name_space -> getClassNameFromMetadata
+* mono_method_full_name -> printMethodName
+  - the mono method is part of mono's debug helpers. Either replace with printMethodName or implement debug helper
+
+### mono_interp_print_code
+* mono_method_full_name -> printMethodName (see more info above in interp_dump_ins_data)
+
+### interp_method_get_header
+* This can be removed and replace calls to it with getMethodInfo and use CORINFO_METHOD_INFO fields
+
+### interp_emit_ldobj
+* m_class_get_byval_arg - N.A. on CoreCLR
+* mono_class_value_size -> getClassSize
+
+### interp_emit_stobj
+* m_class_get_byval_arg - N.A. on CoreCLR
+* m_class_has_references -> getClassAttribs() & CORINFO_FLG_CONTAINS_GC_PTR
+* mono_class_value_size -> getClassSize
+
+### interp_emit_ldelema
+* m_class_get_element_class -> getChildType
+* m_class_get_rank -> getArrayRank
+* mono_class_array_element_size  -> getChildType, getClassSize
+* m_class_get_byval_arg - N.A. on CoreCLR
+* m_class_is_valuetype  -> isValueClass
+
+### interp_emit_metadata_update_ldflda
+* m_field_is_from_update -> getFieldInfo, CORINFO_FIELD_INFO::fieldFlags & CorInfoFlag.CORINFO_FLG_EnC
+* m_type_is_byref -> asCorInfoType() == CORINFO_TYPE_BYREF
+* mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+* m_class_get_byval_arg - N.A. on CoreCLR
+* mono_metadata_make_token - not needed, we will not use the tokens here anymore
+* mono_metadata_update_get_field_idx -> N.A. on CoreClr, we will change the MINT_METADATA_UPDATE_LDFLDA instruction to use helper function instead of the token, CORINFO_HELP_GETFIELDADDR in this case
+
+### interp_handle_intrinsics
+Emits code to handle intrinsics or sets the op output parameter
+* m_class_get_byval_arg - N.A. on CoreCLR
+* m_class_get_element_class -> getChildType
+* m_class_get_image -> getMethodInfo, CORINFO_METHOD_INFO::scope
+* m_class_get_name -> getClassNameFromMetadata
+* m_class_get_name_space -> getClassNameFromMetadata
+* m_class_get_nested_in -> N.A., it is used only to get namespace name for nested classes, getClassNameFromMetadata just works for nested classes too 
+* m_class_has_references -> getClassAttribs() & CORINFO_FLG_CONTAINS_GC_PTR
+* m_class_has_ref_fields -> getClassGClayout(classHnd) > 0
+* m_class_is_enumtype -> isEnum
+* m_class_is_valuetype -> isValueClass
+* m_field_get_offset -> getFieldOffset
+* m_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+* m_type_is_byref -> asCorInfoType() == CORINFO_TYPE_BYREF
+* mini_get_underlying_type -> asCorInfoType
+* mini_is_gsharedvt_variable_klass - N.A. on CoreCLR -> treat as always FALSE
+* mini_should_insert_breakpoint - replace by TRUE, always insert breakpoint for S.D.Debugger.Break
+* mono_class_array_element_size -> getChildType, getClassSize
+* mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
+* mono_class_get_field_from_name_full -> getFieldInClass and use num instead of name
+* mono_class_get_generic_class -> not needed, only used for mini_is_gsharedvt_variable_klass, which will be always FALSE. it is used here to get generic class parameter type
+* mono_class_init_internal - N.A., classes passed over the Jit2EEInterface are always fully loaded
+* mono_class_is_nullable -> isNullableType
+* mono_class_is_subclass_of_internal (target_method->klass, mono_defaults.array_class, FALSE)
+* mono_class_value_size -> getClassSize
+* mono_field_get_rva -> getFieldInfo and use fieldInfo->fieldLookup.addr
+* mono_method_get_context - it is used to get instantiation argument 0 type - use getTypeInstantiationArgument(cls, 0)
+* mono_type_get_object_checked -> getRuntimeTypePointer
+* mono_type_get_underlying_type -> isEnum - underlyingType parameter or the class itself, when not enum
+* mono_type_size -> getClassSize
 
 ### tiered_patcher
 * mono_method_signature_internal -> getMethodSig
@@ -313,7 +484,7 @@ For each Mono API or a Mono specific code sequence, it describes how to replace 
 * mono_class_is_assignable_from_internal -> compareTypesForCast
   * It is used by CEE_ISINST only to optimize the case when the previous IR was one of the MINT_BOX*
 * mono_class_is_method_ambiguous -> N.A., handling such stuff is hidden behind the Jit2EEInterface
-* mono_class_is_nullable -> isNullable
+* mono_class_is_nullable -> isNullableType
 * mono_class_native_size - N.A., used by mono specific IL opcodes only
 * mono_class_setup_fields - N.A., handling such stuff is hidden behind the Jit2EEInterface
 * mono_class_value_size -> getClassSize
@@ -352,8 +523,64 @@ For each Mono API or a Mono specific code sequence, it describes how to replace 
   * Used by CEE_LDTOKEN
 
 ## Functions that don't use any Mono APIs
-These functions might still use glib APIs for memory allocation, bitset, hashtable or linked list.
+These functions might still use glib APIs for memory allocation, bitset, hashtable or linked list. Or they use mono_interp_* or mono_mint_* functions, which are local to the interpreter.
 
+* interp_new_ins
+* interp_add_ins
+* interp_add_ins_explicit
+* interp_insert_ins
+* interp_insert_ins_bb
+* interp_clear_ins
+* interp_ins_is_nop
+* interp_prev_ins
+* interp_next_ins
+* get_stack_size
+* get_tos_offset
+* interp_create_stack_var
+* set_type_and_var
+* set_simple_type_and_var
+* interp_make_var_renamable
+* interp_create_renamed_fixed_var
+* push_type
+* push_simple_type
+* push_type_vt
+* push_types
+* interp_get_mov_for_type
+* get_mint_type_size
+* try_fold_one_arg_branch
+* interp_add_conv
+* try_fold_two_arg_branch
+* unary_arith_op(TransformData *td, int mint_op)
+* can_store
+* emit_ldptr
+* mono_interp_print_td_code
+* interp_ip_in_cbb
+* interp_ins_is_ldc
+* get_type_comparison_op
+* check_stack_helper
+* ensure_stack
+* realloc_stack
+* push_type_explicit
+* fixup_newbb_stack_locals
+* init_bb_stack_state
+* one_arg_branch
+* store_local
+* init_last_ins_call
+* imethod_alloc0
+* interp_generate_icall_throw
+* interp_dump_compacted_ins
+* interp_dump_code
+* interp_dump_ins
+* get_data_item_wide_index
+* get_data_item_index
+* get_data_item_index_imethod
+* is_data_item_wide_index
+* get_data_item_index_nonshared
+* interp_dump_bb
+* interp_get_const_from_ldc_i4
+* interp_get_ldc_i4_from_const
+* interp_get_ldind_for_mt
+* interp_get_stind_for_mt
 * generate_compacted_code
 * mono_jiterp_insert_ins
 * mono_interp_transform_init
