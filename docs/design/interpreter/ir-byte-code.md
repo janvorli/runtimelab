@@ -6,7 +6,7 @@
  * Both the transformation and interpretation use Mono type / method  / vtable etc data structures
  * The arguments to the opcode are immediate constants (16, 32 or 64 bit), indexes into local variables table or indexes into a per-method special data items array.
 ## Limitations
- * The local variable offsets in most of the IR codes are 16 bit unsigned integers, so a method can have max 65536 kB of local variables
+ * The local variable offsets in most of the IR codes are 16 bit unsigned integers, so a method can have max 65536 kB stack frame size
  * The indices into the per-method special data items array in most of the IR codes are also 16 bit unsigned integers, thus a method can have max 65536 of these.
 
 ## IR codes corresponding to IL opcodes
@@ -340,11 +340,11 @@ Various CEE_xxx with CEE_VOLATILE_ prefix, CEE_MONO_MEMORY_BARRIER
  * MINT_MOV_VT(u16 target_local, u16 source_local, u16 size)
 ### Hot reload
  * MINT_METADATA_UPDATE_LDFLDA(u16 target_local, u16 source_local, u16 type_index, u16 fielddef_token_index)
-### JITerpreter
- * MINT_TIER_NOP_JITERPRETER(???)
- * MINT_TIER_PREPARE_JITERPRETER(???)
- * MINT_TIER_MONITOR_JITERPRETER(???)
- * MINT_TIER_ENTER_JITERPRETER(???)
+### JITerpreter - WASM only
+ * MINT_TIER_NOP_JITERPRETER
+ * MINT_TIER_PREPARE_JITERPRETER
+ * MINT_TIER_MONITOR_JITERPRETER
+ * MINT_TIER_ENTER_JITERPRETER
 ### System.Array.Rank intrinsic
  * MINT_ARRAY_RANK(u16 target_local, u16 array_local)
 ### System.Array.GetElementSize intrinsic

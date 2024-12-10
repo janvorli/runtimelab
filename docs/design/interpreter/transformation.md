@@ -121,10 +121,16 @@ For each Mono API or a Mono specific code sequence, it describes how to replace 
 * mono_class_from_mono_type_internal - N.A., just use CORINFO_CLASS_HANDLE
 
 ### mono_interp_jit_call_supported
-* Return false, we will not support JIT (at least not in first version)
+* Checks if a specific call to AOT compiled code (the JIT in the name is due to historical reasons) is supported by the interpreter
+* mono_jit_call_can_be_supported_by_interp - rejects calls with more than 10 arguments, pinvokes, internal calls, string constructor, methods with wrappers and methods with StackCrawlMark locals.
+* Then the function returns true if:
+  * the target method is in AOTed module and it isn't marked as "interpret only"
+  * or if the method's class is on an explicit list of classes to JIT (testing feature)
+* Otherwise it returns false, indicating the call should be interpreted
 
 ### jit_call2_supported
-* Remove or return false, we will not support JIT (at least not in first version)
+* Checks if the target function is a pinvoke, internal call, generic method or string constructor and return false for those
+* Otherwise force JITting of the target method and invoking the jitted form when tiered compilation is enabled. It emits the MINT_JIT_CALL2 IR code in this case.
 
 ### interp_generate_mae_throw
 ### interp_generate_void_throw
