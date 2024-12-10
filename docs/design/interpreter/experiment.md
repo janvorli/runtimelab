@@ -46,7 +46,7 @@ There is also support for tiering when a frequently executed method with non-opt
 ## Analysis results and plans for CoreCLR
 The following documents describe the mapping of the IL opcodes to the IR opcodes, the Mono APIs used by the transformation and execution phases and how the debugger cooperates with the interpreter. They also describe the way these should work in CoreCLR.
 * [IR byte code](ir-byte-code.md)
-* TODO: Interpreter Mono runtime dependencies (Vlad - commit the gist he has initially created)
+* [Interpreter Mono runtime dependencies](mono-runtime-dependencies.md)
 * [Transformation phase analysis](transformation.md)
 * [Execution phase analysis](execution.md)
 * [Debugger integration](debugger.md)
@@ -54,4 +54,4 @@ The following documents describe the mapping of the IL opcodes to the IR opcodes
 * [Precise GC in the interpreter](precise-gc.md)
 * [Interop of the interpreter with compiled managed code](compiled-code-interop.md)
 * [CoreCLR exception handling integration with the interpreter](exception-handling.md)
-* TODO: link doc on Calls, delegates, function pointers (Vlad)
+* [Calls implementation in the interpreter](calls.md)
