@@ -30,5 +30,5 @@ As a result of the experiment, some code changes were made and documents written
   * Experimentally implement new Precode to represent interpreted code
 * Documents containing details on the investigated subjects 
   * [Status](experiment_status.md)
-  * [Calling interpreted methods from native runtime]()
-  * [Calling interpreted methods from ReadyToRun code]()
+  * [Calling interpreted methods from native runtime](TaggedFunctionPrototype.md)
+  * [Calling interpreted methods from ReadyToRun code](ReadyToInterpret.md)
