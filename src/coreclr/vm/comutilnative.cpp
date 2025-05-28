@@ -900,6 +900,10 @@ FCIMPL0(INT64, GCInterface::GetTotalAllocatedBytesApproximate)
 {
     FCALL_CONTRACT;
 
+#if FEATURE_SATORI_GC
+    return GCHeapUtilities::GetGCHeap()->GetTotalAllocatedBytes();
+#else
+
 #ifdef TARGET_64BIT
     uint64_t unused_bytes = Thread::dead_threads_non_alloc_bytes;
 #else
@@ -924,6 +928,7 @@ FCIMPL0(INT64, GCInterface::GetTotalAllocatedBytesApproximate)
     }
 
     return current_high;
+#endif
 }
 FCIMPLEND;
 
@@ -935,6 +940,12 @@ extern "C" INT64 QCALLTYPE GCInterface_GetTotalAllocatedBytesPrecise(QCallExcept
 
     GCX_COOP();
 
+#if FEATURE_SATORI_GC
+
+    GCHeapUtilities::GetGCHeap()->GarbageCollect(1);
+
+    allocated = GCHeapUtilities::GetGCHeap()->GetTotalAllocatedBytes();
+#else
     // We need to suspend/restart the EE to get each thread's
     // non-allocated memory from their allocation contexts
 
@@ -956,7 +967,6 @@ extern "C" INT64 QCALLTYPE GCInterface_GetTotalAllocatedBytesPrecise(QCallExcept
     END_QCALL;
 
     return allocated;
-#endif
 }
 
 

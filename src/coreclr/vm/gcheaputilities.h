@@ -337,4 +337,3 @@ private:
 };
 
 #endif // _GCHEAPUTILITIES_H_
-

@@ -49,6 +49,212 @@ endif
 
 ifndef FEATURE_SATORI_GC
 
+; JIT_ByRefWriteBarrier has weird semantics, see usage in StubLinkerX86.cpp
+;
+; Entry:
+;   RDI - address of ref-field (assigned to)
+;   RSI - address of the data  (source)
+;   RCX is trashed
+;   RAX is trashed when FEATURE_USE_SOFTWARE_WRITE_WATCH_FOR_GC_HEAP is defined
+; Exit:
+;   RDI, RSI are incremented by SIZEOF(LPVOID)
+LEAF_ENTRY JIT_ByRefWriteBarrier, _TEXT
+        mov     rcx, [rsi]
+
+; If !WRITE_BARRIER_CHECK do the write first, otherwise we might have to do some ShadowGC stuff
+ifndef WRITE_BARRIER_CHECK
+        ; rcx is [rsi]
+        mov     [rdi], rcx
+endif
+
+        ; When WRITE_BARRIER_CHECK is defined _NotInHeap will write the reference
+        ; but if it isn't then it will just return.
+        ;
+        ; See if this is in GCHeap
+        cmp     rdi, [g_lowest_address]
+        jb      NotInHeap
+        cmp     rdi, [g_highest_address]
+        jnb     NotInHeap
+
+ifdef WRITE_BARRIER_CHECK
+        ; we can only trash rcx in this function so in _DEBUG we need to save
+        ; some scratch registers.
+        push    r10
+        push    r11
+        push    rax
+
+        ; **ALSO update the shadow GC heap if that is enabled**
+        ; Do not perform the work if g_GCShadow is 0
+        cmp     g_GCShadow, 0
+        je      NoShadow
+
+        ; If we end up outside of the heap don't corrupt random memory
+        mov     r10, rdi
+        sub     r10, [g_lowest_address]
+        jb      NoShadow
+
+        ; Check that our adjusted destination is somewhere in the shadow gc
+        add     r10, [g_GCShadow]
+        cmp     r10, [g_GCShadowEnd]
+        jnb     NoShadow
+
+        ; Write ref into real GC
+        mov     [rdi], rcx
+        ; Write ref into shadow GC
+        mov     [r10], rcx
+
+        ; Ensure that the write to the shadow heap occurs before the read from
+        ; the GC heap so that race conditions are caught by INVALIDGCVALUE
+        mfence
+
+        ; Check that GC/ShadowGC values match
+        mov     r11, [rdi]
+        mov     rax, [r10]
+        cmp     rax, r11
+        je      DoneShadow
+        mov     r11, INVALIDGCVALUE
+        mov     [r10], r11
+
+        jmp     DoneShadow
+
+    ; If we don't have a shadow GC we won't have done the write yet
+    NoShadow:
+        mov     [rdi], rcx
+
+    ; If we had a shadow GC then we already wrote to the real GC at the same time
+    ; as the shadow GC so we want to jump over the real write immediately above.
+    ; Additionally we know for sure that we are inside the heap and therefore don't
+    ; need to replicate the above checks.
+    DoneShadow:
+        pop     rax
+        pop     r11
+        pop     r10
+endif
+
+ifdef FEATURE_USE_SOFTWARE_WRITE_WATCH_FOR_GC_HEAP
+        ; Update the write watch table if necessary
+        cmp     byte ptr [g_sw_ww_enabled_for_gc_heap], 0h
+        je      CheckCardTable
+        mov     rax, rdi
+        shr     rax, 0Ch ; SoftwareWriteWatch::AddressToTableByteIndexShift
+        add     rax, qword ptr [g_write_watch_table]
+        cmp     byte ptr [rax], 0h
+        jne     CheckCardTable
+        mov     byte ptr [rax], 0FFh
+endif
+
+        ; See if we can just quick out
+    CheckCardTable:
+        cmp     rcx, [g_ephemeral_low]
+        jb      Exit
+        cmp     rcx, [g_ephemeral_high]
+        jnb     Exit
+
+        ; do the following checks only if we are allowed to trash rax
+        ; otherwise we don't have enough registers
+ifdef FEATURE_USE_SOFTWARE_WRITE_WATCH_FOR_GC_HEAP
+        mov     rax, rcx
+
+        mov     cl, [g_region_shr]
+        test    cl, cl
+        je      SkipCheck
+
+        ; check if the source is in gen 2 - then it's not an ephemeral pointer
+        shr     rax, cl
+        add     rax, [g_region_to_generation_table]
+        cmp     byte ptr [rax], 82h
+        je      Exit
+
+        ; check if the destination happens to be in gen 0
+        mov     rax, rdi
+        shr     rax, cl
+        add     rax, [g_region_to_generation_table]
+        cmp     byte ptr [rax], 0
+        je      Exit
+    SkipCheck:
+
+        cmp     [g_region_use_bitwise_write_barrier], 0
+        je      CheckCardTableByte
+
+        ; compute card table bit
+        mov     rcx, rdi
+        mov     al, 1
+        shr     rcx, 8
+        and     cl, 7
+        shl     al, cl
+
+        ; move current rdi value into rcx and then increment the pointers
+        mov     rcx, rdi
+        add     rsi, 8h
+        add     rdi, 8h
+
+        ; Check if we need to update the card table
+        ; Calc pCardByte
+        shr     rcx, 0Bh
+        add     rcx, [g_card_table]
+
+        ; Check if this card table bit is already set
+        test    byte ptr [rcx], al
+        je      SetCardTableBit
+        REPRET
+
+    SetCardTableBit:
+        lock or byte ptr [rcx], al
+        jmp     CheckCardBundle
+endif
+CheckCardTableByte:
+
+        ; move current rdi value into rcx and then increment the pointers
+        mov     rcx, rdi
+        add     rsi, 8h
+        add     rdi, 8h
+
+        ; Check if we need to update the card table
+        ; Calc pCardByte
+        shr     rcx, 0Bh
+        add     rcx, [g_card_table]
+
+        ; Check if this card is dirty
+        cmp     byte ptr [rcx], 0FFh
+        jne     UpdateCardTable
+        REPRET
+
+    UpdateCardTable:
+        mov     byte ptr [rcx], 0FFh
+
+    CheckCardBundle:
+
+ifdef FEATURE_MANUALLY_MANAGED_CARD_BUNDLES
+        ; check if we need to update the card bundle table
+        ; restore destination address from rdi - rdi has been incremented by 8 already
+        lea     rcx, [rdi-8]
+        shr     rcx, 15h
+        add     rcx, [g_card_bundle_table]
+        cmp     byte ptr [rcx], 0FFh
+        jne     UpdateCardBundleTable
+        REPRET
+
+    UpdateCardBundleTable:
+        mov     byte ptr [rcx], 0FFh
+endif
+        ret
+
+    align 16
+    NotInHeap:
+; If WRITE_BARRIER_CHECK then we won't have already done the mov and should do it here
+; If !WRITE_BARRIER_CHECK we want _NotInHeap and _Leave to be the same and have both
+; 16 byte aligned.
+ifdef WRITE_BARRIER_CHECK
+        ; rcx is [rsi]
+        mov     [rdi], rcx
+endif
+    Exit:
+        ; Increment the pointers before leaving
+        add     rdi, 8h
+        add     rsi, 8h
+        ret
+LEAF_END_MARKED JIT_ByRefWriteBarrier, _TEXT
+
 Section segment para 'DATA'
 
         align   16
@@ -101,6 +307,8 @@ Section segment para 'DATA'
 JIT_WriteBarrier_Loc:
         dq 0
 
+extern JIT_WriteBarrier:proc
+
 LEAF_ENTRY  JIT_WriteBarrier_Callable, _TEXT
         ; JIT_WriteBarrier(Object** dst, Object* src)
 
@@ -110,224 +318,6 @@ LEAF_ENTRY  JIT_WriteBarrier_Callable, _TEXT
 
         jmp     JIT_WriteBarrier
 LEAF_END JIT_WriteBarrier_Callable, _TEXT
-
-; Mark start of the code region that we patch at runtime
-LEAF_ENTRY JIT_PatchedCodeStart, _TEXT
-        ret
-LEAF_END JIT_PatchedCodeStart, _TEXT
-
-; void JIT_CheckedWriteBarrier(Object** dst, Object* src)
-LEAF_ENTRY JIT_CheckedWriteBarrier, _TEXT
-    ; See if dst is in GCHeap
-        mov     rax, [g_card_bundle_table] ; fetch the page byte map
-        mov     r8,  rcx
-        shr     r8,  30                    ; dst page index
-        cmp     byte ptr [rax + r8], 0
-        jne     CheckedEntry
-
-    NotInHeap:
-        ; See comment above about possible AV
-        mov     [rcx], rdx
-        ret
-LEAF_END_MARKED JIT_CheckedWriteBarrier, _TEXT
-
-ALTERNATE_ENTRY macro Name
-
-Name label proc
-PUBLIC Name
-        endm
-
-;
-;   rcx - dest address 
-;   rdx - object
-;
-LEAF_ENTRY JIT_WriteBarrier, _TEXT
-
-ifdef FEATURE_SATORI_EXTERNAL_OBJECTS
-    ; check if src is in heap
-        mov     rax, [g_card_bundle_table] ; fetch the page byte map
-    ALTERNATE_ENTRY CheckedEntry
-        mov     r8,  rdx
-        shr     r8,  30                    ; src page index
-        cmp     byte ptr [rax + r8], 0
-        je      JustAssign                 ; src not in heap
-else
-    ALTERNATE_ENTRY CheckedEntry
-endif
-
-    ; check for escaping assignment
-    ; 1) check if we own the source region
-        mov     r8, rdx
-        and     r8, 0FFFFFFFFFFE00000h  ; source region
-
-ifndef FEATURE_SATORI_EXTERNAL_OBJECTS
-        jz      JustAssign              ; assigning null
-endif
-
-        mov     rax,  gs:[30h]          ; thread tag, TEB on NT
-        cmp     qword ptr [r8], rax     
-        jne     AssignAndMarkCards      ; not local to this thread
-
-    ; 2) check if the src and dst are from the same region
-        mov     rax, rcx
-        and     rax, 0FFFFFFFFFFE00000h ; target aligned to region
-        cmp     rax, r8
-        jne     RecordEscape            ; cross region assignment. definitely escaping
-
-    ; 3) check if the target is exposed
-        mov     rax, rcx
-        and     rax, 01FFFFFh
-        shr     rax, 3
-        bt      qword ptr [r8], rax
-        jb      RecordEscape            ; target is exposed. record an escape.
-
-    JustAssign:
-        mov     [rcx], rdx              ; no card marking, src is not a heap object
-        ret
-
-    AssignAndMarkCards:
-        mov     [rcx], rdx
-
-    ; TUNING: barriers in different modes could be separate pieces of code, but barrier switch 
-    ;         needs to suspend EE, not sure if skipping mode check would worth that much.
-        mov     r11, qword ptr [g_sw_ww_table]
-
-    ; check the barrier state. this must be done after the assignment (in program order)
-    ; if state == 2 we do not set or dirty cards.
-        cmp     r11, 2h
-        jne     DoCards
-    Exit:
-        ret
-
-    DoCards:
-    ; if same region, just check if barrier is not concurrent
-        xor     rdx, rcx
-        shr     rdx, 21
-        jz      CheckConcurrent
-
-    ; if src is in gen2/3 and the barrier is not concurrent we do not need to mark cards
-        cmp     dword ptr [r8 + 16], 2
-        jl      MarkCards
-
-    CheckConcurrent:
-        cmp     r11, 0h
-        je      Exit
-
-    MarkCards:
-    ; fetch card location for rcx
-        mov     r9 , [g_card_table]     ; fetch the page map
-        mov     r8,  rcx
-        shr     rcx, 30
-        mov     rax, qword ptr [r9 + rcx * 8] ; page
-        sub     r8, rax   ; offset in page
-        mov     rdx,r8
-        shr     r8, 9     ; card offset
-        shr     rdx, 20   ; group index
-        lea     rdx, [rax + rdx * 2 + 80h] ; group offset
-
-    ; check if concurrent marking is in progress
-        cmp     r11, 0h
-        jne     DirtyCard
-
-    ; SETTING CARD FOR RCX
-     SetCard:
-        cmp     byte ptr [rax + r8], 0
-        jne     Exit
-        mov     byte ptr [rax + r8], 1
-     SetGroup:
-        cmp     byte ptr [rdx], 0
-        jne     CardSet
-        mov     byte ptr [rdx], 1
-     SetPage:
-        cmp     byte ptr [rax], 0
-        jne     CardSet
-        mov     byte ptr [rax], 1
-
-     CardSet:
-    ; check if concurrent marking is still not in progress
-        cmp     qword ptr [g_sw_ww_table], 0h
-        jne     DirtyCard
-        ret
-
-    ; DIRTYING CARD FOR RCX
-     DirtyCard:
-        mov     byte ptr [rax + r8], 4
-     DirtyGroup:
-        cmp     byte ptr [rdx], 4
-        je      Exit
-        mov     byte ptr [rdx], 4
-     DirtyPage:
-        cmp     byte ptr [rax], 4
-        je      Exit
-        mov     byte ptr [rax], 4
-        ret
-
-    ; this is expected to be rare.
-    RecordEscape:
-
-        ; 4) check if the source is escaped
-        mov     rax, rdx
-        add     rax, 8                        ; escape bit is MT + 1
-        and     rax, 01FFFFFh
-        shr     rax, 3
-        bt      qword ptr [r8], rax
-        jb      AssignAndMarkCards            ; source is already escaped.
-
-        ; Align rsp
-        mov  r9, rsp
-        and  rsp, -16
-
-        ; save rsp, rcx, rdx, r8 and have enough stack for the callee
-        push r9
-        push rcx
-        push rdx
-        push r8
-        sub  rsp, 20h
-
-        ; void SatoriRegion::EscapeFn(SatoriObject** dst, SatoriObject* src, SatoriRegion* region)
-        call    qword ptr [r8 + 8]
-
-        add     rsp, 20h
-        pop     r8
-        pop     rdx
-        pop     rcx
-        pop     rsp
-        jmp     AssignAndMarkCards
-LEAF_END_MARKED JIT_WriteBarrier, _TEXT
-
-; JIT_ByRefWriteBarrier has weird symantics, see usage in StubLinkerX86.cpp
-;
-; Entry:
-;   RDI - address of ref-field (assigned to)
-;   RSI - address of the data  (source)
-;   Note: RyuJIT assumes that all volatile registers can be trashed by 
-;   the CORINFO_HELP_ASSIGN_BYREF helper (i.e. JIT_ByRefWriteBarrier)
-;   except RDI and RSI. This helper uses and defines RDI and RSI, so
-;   they remain as live GC refs or byrefs, and are not killed.
-; Exit:
-;   RDI, RSI are incremented by SIZEOF(LPVOID)
-LEAF_ENTRY JIT_ByRefWriteBarrier, _TEXT
-        mov     rcx, rdi
-        mov     rdx, [rsi]
-        add     rdi, 8h
-        add     rsi, 8h
-
-    ; See if dst is in GCHeap
-        mov     rax, [g_card_bundle_table] ; fetch the page byte map
-        mov     r8,  rcx
-        shr     r8,  30                    ; dst page index
-        cmp     byte ptr [rax + r8], 0
-        jne     CheckedEntry
-
-    NotInHeap:
-        mov     [rcx], rdx
-        ret
-LEAF_END_MARKED JIT_ByRefWriteBarrier, _TEXT
-
-; Mark start of the code region that we patch at runtime
-LEAF_ENTRY JIT_PatchedCodeLast, _TEXT
-        ret
-LEAF_END JIT_PatchedCodeLast, _TEXT
 
 endif  ; FEATURE_SATORI_GC
 
