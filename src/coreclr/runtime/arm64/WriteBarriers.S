@@ -388,6 +388,8 @@ LOCAL_LABEL(NoBarrierXchg):
 .arch_extension nolse
 #endif
 
+#endif FEATURE_NATIVEAOT
+
 #else  //FEATURE_SATORI_GC   ######################################################
 
 #ifndef LSE_INSTRUCTIONS_ENABLED_BY_DEFAULT
@@ -436,7 +438,7 @@ LEAF_ENTRY RhpCheckedAssignRefArm64, _TEXT
         lsr     x17, x14, #30                       // dst page index
         ldrb    w12, [x16, x17]
         cbz     x12 , LOCAL_LABEL(NotInHeap)
-        b       C_FUNC(CheckedEntry)
+        b       C_FUNC(RhpCheckedEntry)
 
     LOCAL_LABEL(NotInHeap):
     ALTERNATE_ENTRY RhpCheckedAssignRefAVLocation
@@ -464,12 +466,12 @@ LEAF_ENTRY RhpAssignRefArm64, _TEXT
     // 1) check if we own the source region
 #ifdef FEATURE_SATORI_EXTERNAL_OBJECTS
         PREPARE_EXTERNAL_VAR_INDIRECT g_card_bundle_table, x16
-ALTERNATE_ENTRY CheckedEntry
+ALTERNATE_ENTRY RhpCheckedEntry
         lsr     x17, x15, #30                   // source page index
         ldrb    w12, [x16, x17]
         cbz     x12, LOCAL_LABEL(JustAssign)    // null or external (immutable) object
 #else
-ALTERNATE_ENTRY CheckedEntry
+ALTERNATE_ENTRY RhpCheckedEntry
         cbz     x15, LOCAL_LABEL(JustAssign)    // assigning null
 #endif
         and     x16,  x15, #0xFFFFFFFFFFE00000  // source region
@@ -640,6 +642,8 @@ LEAF_ENTRY RhpAssignRef, _TEXT
         mov     x15, x1                     // x15 = val
         b       C_FUNC(RhpAssignRefArm64)
 LEAF_END RhpAssignRef, _TEXT
+
+#ifdef FEATURE_NATIVEAOT
 
 // RhpCheckedLockCmpXchg(Object** dest, Object* value, Object* comparand)
 //
@@ -1046,5 +1050,7 @@ LEAF_END RhpCheckedXchg, _TEXT
 #ifndef LSE_INSTRUCTIONS_ENABLED_BY_DEFAULT
 .arch_extension nolse
 #endif
+
+#endif // FEATURE_NATIVEAOT
 
 #endif //FEATURE_SATORI_GC

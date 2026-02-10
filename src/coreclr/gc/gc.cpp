@@ -18,6 +18,9 @@
 
 #include "gcinternal.h"
 
+// TODO: Satori, we are not using this code, but something causes the warning and breaks the build.
+#pragma warning(disable:4723)
+
 #ifdef SERVER_GC
 namespace SVR {
 #else // SERVER_GC
