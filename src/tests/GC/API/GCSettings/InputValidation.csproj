@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <CLRTestExecutionArguments />
+    <!-- Satori NYI multiple latency modes -->
+    <DisableProjectBuild>true</DisableProjectBuild>
   </PropertyGroup>
   <PropertyGroup>
     <DebugType>PdbOnly</DebugType>

@@ -8,6 +8,8 @@
     <!-- TODO: Re-enable when CoreCLR WebAssembly supports server GC and managed threads.
          Tracked by https://github.com/dotnet/runtime/issues/131321. -->
     <CLRTestTargetUnsupported Condition="'$(RuntimeFlavor)' == 'coreclr' and '$(TargetOS)' == 'browser'">true</CLRTestTargetUnsupported>
+    <!-- Satori NYI -->
+    <DisableProjectBuild>true</DisableProjectBuild>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup>
