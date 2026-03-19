@@ -81,6 +81,8 @@ extends:
                     useHelixMonitor: ${{ variables.enableHelixJobMonitor }}
               extraVariablesTemplates:
                 - template: /eng/pipelines/common/templates/runtimes/test-variables.yml
+                  parameters:
+                    liveLibrariesBuildConfig: Debug
 
         #
         # Build the whole product with Release CoreCLR and run libraries tests
@@ -102,6 +104,7 @@ extends:
                     creator: dotnet-bot
                     testRunNamePrefixSuffix: Libraries_$(_BuildConfig)
                     useHelixMonitor: ${{ variables.enableHelixJobMonitor }}
+                    extraHelixArguments: /p:Configuration=$(_BuildConfig)
               extraVariablesTemplates:
                 - template: /eng/pipelines/common/templates/runtimes/test-variables.yml
 
