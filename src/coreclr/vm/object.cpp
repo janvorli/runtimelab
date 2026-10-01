@@ -1163,7 +1163,6 @@ void* __cdecl GCSafeMemCpy(void * dest, const void * src, size_t len)
 {
     STATIC_CONTRACT_NOTHROW;
     STATIC_CONTRACT_GC_NOTRIGGER;
-    STATIC_CONTRACT_FORBID_FAULT;
 
 #ifdef FEATURE_SATORI_GC
     if (IsInHeapSatori((Object**)dest))
@@ -1187,7 +1186,6 @@ void* __cdecl GCSafeMemCpy(void * dest, const void * src, size_t len)
     }
     return memcpyNoGCRefs(dest, src, len);
 }
-#endif // _DEBUG
 #endif // _DEBUG
 
 // This function clears a piece of memory in a GC safe way.  It makes the guarantee

@@ -578,10 +578,7 @@ ThreadStressLog* StressLog::CreateThreadStressLogHelper() {
 
         if (msgs == 0 ||!msgs->IsValid ())
         {
-            // TODO: SATORI. After failed `new` we may see failed `delete` as well when shutting down
-            //               should this actually work?
-            //               it is noisy when stress-testing. 
-            // delete msgs;
+            delete msgs;
             msgs = 0;
 #ifdef MEMORY_MAPPED_STRESSLOG
             if (!t_triedToCreateThreadStressLog && theLog.stressLogHeader != nullptr)

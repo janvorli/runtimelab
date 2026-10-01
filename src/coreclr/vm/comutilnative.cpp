@@ -963,6 +963,7 @@ extern "C" INT64 QCALLTYPE GCInterface_GetTotalAllocatedBytesPrecise(QCallExcept
     }
 
     ThreadSuspend::RestartEE(true /* SuspendSucceeded */);
+#endif // FEATURE_SATORI_GC
 
     END_QCALL;
 
